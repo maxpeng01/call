@@ -4,20 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>视频通话</title>
+<!-- 静态标题/预览图：iMessage、微信的链接预览读的是这里，不执行 JS -->
+<title>王泓森邀请你视频通话</title>
+<meta property="og:title" content="王泓森邀请你视频通话">
+<meta property="og:description" content="点击接听">
+<meta property="og:image" content="https://maxpeng01.github.io/call/avatar.jpg">
+<link rel="apple-touch-icon" href="avatar.jpg">
 <style>
-  /* ============ 可改配置在最底部 <script> 的 CONFIG 里 ============ */
   :root {
     --red-top: #b3140f;
     --red-bot: #6e0303;
     --gold: #e7cd9c;
+    --gold-hi: #ffe7b0;
     --green: #4fbf6a;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; background: var(--red-bot); overflow: hidden; }
   body {
     font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    color: #fff;
+    color: #fff; -webkit-user-select: none; user-select: none;
   }
   #app {
     position: relative; height: 100%; max-width: 480px; margin: 0 auto;
@@ -26,7 +31,7 @@
   .topbar {
     height: 56px; flex: none; background: #fff; color: #222;
     display: flex; align-items: center; justify-content: center; position: relative;
-    font-size: 18px; font-weight: 500;
+    font-size: 18px; font-weight: 500; z-index: 10;
   }
   .topbar .close {
     position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
@@ -36,73 +41,161 @@
     flex: 1; position: relative; overflow: hidden;
     background: linear-gradient(180deg, var(--red-top) 0%, #9a0b08 45%, var(--red-bot) 100%);
   }
-  /* 福字底纹：canvas 生成，只铺上半部分并渐隐 */
+
+  /* ---------- 背景层 ---------- */
   #pattern {
-    position: absolute; inset: 0; width: 100%; height: 100%;
+    position: absolute; left: -5%; top: -5%; width: 110%; height: 110%;
     -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 40%, transparent 72%);
             mask-image: linear-gradient(180deg, #000 0%, #000 40%, transparent 72%);
     opacity: .9;
+    animation: drift 18s ease-in-out infinite alternate;
   }
+  @keyframes drift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(-2%, 2%) scale(1.06); }
+  }
+  /* 斜向流光 */
+  .sweep {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  }
+  .sweep::before {
+    content: ""; position: absolute; top: -50%; left: -60%; width: 40%; height: 200%;
+    background: linear-gradient(90deg, transparent, rgba(255,220,160,.13), transparent);
+    transform: rotate(20deg);
+    animation: sweep 5.5s ease-in-out infinite;
+  }
+  @keyframes sweep { 0% { left: -60%; } 55%, 100% { left: 130%; } }
+  /* 顶部光晕 */
+  .halo {
+    position: absolute; left: 50%; top: 26%; width: 520px; height: 520px;
+    transform: translate(-50%, -50%); pointer-events: none;
+    background: radial-gradient(circle, rgba(255,200,120,.28) 0%, rgba(255,160,80,.08) 35%, transparent 65%);
+    animation: halo 3s ease-in-out infinite;
+  }
+  @keyframes halo { 50% { opacity: .55; transform: translate(-50%, -50%) scale(1.08); } }
+  #fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* ---------- 来电人 ---------- */
   .caller {
-    position: absolute; left: 0; right: 0; top: 16%;
+    position: absolute; left: 0; right: 0; top: 15%;
     display: flex; flex-direction: column; align-items: center;
   }
-  .avatar {
-    width: 132px; height: 132px; border-radius: 6px;
-    border: 2px solid var(--gold); background: #d9d9d9 center/cover no-repeat;
-    box-shadow: 0 4px 18px rgba(0,0,0,.25);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 56px; color: #fff; font-weight: 600;
+  .avatar-wrap { position: relative; }
+  .avatar-wrap::before, .avatar-wrap::after {
+    /* 头像外扩的金色方框波纹 */
+    content: ""; position: absolute; inset: -2px; border-radius: 8px;
+    border: 2px solid var(--gold); opacity: 0;
   }
-  .name { margin-top: 18px; font-size: 32px; font-weight: 700; letter-spacing: 4px; }
+  .ringing .avatar-wrap::before { animation: sq 2s ease-out infinite; }
+  .ringing .avatar-wrap::after  { animation: sq 2s ease-out 1s infinite; }
+  @keyframes sq { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+  .avatar {
+    width: 136px; height: 136px; border-radius: 6px;
+    border: 2px solid var(--gold); background: #d9d9d9 center 12% / cover no-repeat;
+    box-shadow: 0 6px 24px rgba(0,0,0,.3), 0 0 0 0 rgba(255,215,140,.0);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 56px; color: #fff; font-weight: 600; position: relative; overflow: hidden;
+  }
+  .ringing .avatar { animation: glow 2s ease-in-out infinite; }
+  @keyframes glow {
+    50% { box-shadow: 0 6px 24px rgba(0,0,0,.3), 0 0 26px 4px rgba(255,215,140,.55); }
+  }
+  /* 头像上的高光扫过 */
+  .avatar::after {
+    content: ""; position: absolute; top: 0; left: -80%; width: 50%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
+    transform: skewX(-15deg);
+  }
+  .ringing .avatar::after { animation: shine 3.2s ease-in-out 1.2s infinite; }
+  @keyframes shine { 0% { left: -80%; } 35%, 100% { left: 140%; } }
+
+  .name {
+    margin-top: 20px; font-size: 32px; font-weight: 700; letter-spacing: 4px;
+    background: linear-gradient(90deg, #fff 0%, #fff 40%, var(--gold-hi) 50%, #fff 60%, #fff 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .ringing .name { animation: nameshine 3.2s linear infinite; }
+  @keyframes nameshine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
   .sub  { margin-top: 12px; font-size: 19px; letter-spacing: 2px; opacity: .95; }
   .sub .dots::after { content: ""; animation: dots 1.5s steps(4) infinite; }
   @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
 
+  /* 入场动画（点“确定”后触发） */
+  .caller > *, .answer { opacity: 0; }
+  .ringing .avatar-wrap { animation: pop .7s cubic-bezier(.2,1.5,.4,1) forwards; }
+  .ringing .name        { animation: up .6s .25s ease-out forwards, nameshine 3.2s linear 1s infinite; }
+  .ringing .sub         { animation: up .6s .4s ease-out forwards; }
+  .ringing .answer      { animation: up2 .7s .55s ease-out forwards; }
+  @keyframes pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+  @keyframes up  { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes up2 { from { opacity: 0; transform: translate(-50%, 30px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  /* ---------- 接听按钮 ---------- */
   .answer {
     position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%);
     display: flex; flex-direction: column; align-items: center; cursor: pointer;
   }
-  .btn-wrap { position: relative; width: 120px; height: 120px; }
-  .btn-wrap svg { position: absolute; inset: 0; }
+  .btn-wrap { position: relative; width: 124px; height: 124px; }
+  .btn-wrap > svg { position: absolute; inset: 0; }
   .btn {
-    position: absolute; inset: 22px; border-radius: 50%; background: var(--green);
+    position: absolute; inset: 24px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #7fe095, var(--green) 60%, #3aa555);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 0 3px rgba(231,205,156,.5);
-    animation: shake 1.2s ease-in-out infinite;
+    box-shadow: 0 0 0 3px rgba(231,205,156,.55), 0 6px 18px rgba(0,0,0,.35);
+    animation: bounce 1.4s ease-in-out infinite;
   }
+  .btn svg { width: 38px; height: 38px; animation: shake 1.4s ease-in-out infinite; }
+  @keyframes bounce { 0%,55%,100% { transform: scale(1); } 62% { transform: scale(1.1); } 70% { transform: scale(.97); } 78% { transform: scale(1.04); } }
   @keyframes shake {
-    0%,60%,100% { transform: rotate(0) }
-    65% { transform: rotate(-12deg) } 70% { transform: rotate(12deg) }
-    75% { transform: rotate(-10deg) } 80% { transform: rotate(10deg) }
-    85% { transform: rotate(0) }
+    0%,55%,100% { transform: rotate(0) }
+    60% { transform: rotate(-16deg) } 65% { transform: rotate(16deg) }
+    70% { transform: rotate(-12deg) } 75% { transform: rotate(12deg) }
+    80% { transform: rotate(0) }
   }
-  .btn svg { position: static; width: 38px; height: 38px; }
+  .answer:active .btn { transform: scale(.92); }
   .answer .label { margin-top: 10px; font-size: 16px; letter-spacing: 2px; }
+  .hint {
+    margin-top: 6px; font-size: 12px; opacity: .6; letter-spacing: 1px;
+    animation: blink 1.6s ease-in-out infinite;
+  }
+  @keyframes blink { 50% { opacity: .25; } }
 
-  /* 接通后 */
+  /* ---------- 首次点击门（解锁声音） ---------- */
+  #gate {
+    position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(40,0,0,.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    transition: opacity .35s;
+  }
+  #gate .dialog {
+    width: 270px; background: #fff; color: #222; border-radius: 12px; overflow: hidden; text-align: center;
+    animation: pop .45s cubic-bezier(.2,1.4,.4,1);
+  }
+  #gate .content { padding: 26px 18px 22px; font-size: 16px; line-height: 1.6; }
+  #gate .content small { display: block; color: #888; font-size: 13px; margin-top: 4px; }
+  #gate .ok {
+    border-top: 1px solid #eee; padding: 13px 0; font-size: 17px; color: #576b95; font-weight: 600; cursor: pointer;
+  }
+
+  /* ---------- 接通过渡 ---------- */
+  #burst {
+    position: absolute; z-index: 8; width: 10px; height: 10px; border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, #ffe7b0 40%, #2b2b2b 70%);
+    transform: translate(-50%, -50%) scale(0); pointer-events: none;
+  }
+  #burst.go { transition: transform .75s cubic-bezier(.6,0,.4,1); transform: translate(-50%, -50%) scale(260); }
   #call {
-    position: absolute; inset: 0; background: #000; display: none; z-index: 5;
+    position: absolute; inset: 0; background: #1c1c1e; display: none; z-index: 9;
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    animation: fadein .3s ease-out;
   }
-  #call video { width: 100%; height: 100%; object-fit: cover; }
-  #call .connected {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px;
-  }
-  #call .connected .avatar { width: 96px; height: 96px; font-size: 40px; }
-  #call .timer {
-    position: absolute; top: 14px; left: 0; right: 0; text-align: center;
-    font-size: 15px; opacity: .85; text-shadow: 0 1px 3px rgba(0,0,0,.6);
-  }
-  #call .hangup {
-    position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
-    width: 68px; height: 68px; border-radius: 50%; background: #e5463b;
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
-  }
-  #call .hangup svg { width: 32px; height: 32px; transform: rotate(135deg); }
+  @keyframes fadein { from { opacity: 0; } }
+  #call .avatar { width: 96px; height: 96px; font-size: 40px; animation: pop .5s cubic-bezier(.2,1.5,.4,1); }
+  #call .who { font-size: 22px; letter-spacing: 3px; }
+  #call .status { font-size: 15px; opacity: .75; letter-spacing: 1px; }
   #ended {
-    position: absolute; inset: 0; display: none; z-index: 6;
-    align-items: center; justify-content: center; background: rgba(0,0,0,.75);
+    position: absolute; inset: 0; display: none; z-index: 12;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.8);
     font-size: 18px; letter-spacing: 2px;
   }
 </style>
@@ -116,11 +209,14 @@
     <span id="title"></span>
   </div>
 
-  <div class="stage">
+  <div class="stage" id="stage">
     <canvas id="pattern"></canvas>
+    <div class="halo"></div>
+    <div class="sweep"></div>
+    <canvas id="fx"></canvas>
 
     <div class="caller">
-      <div class="avatar" id="avatar"></div>
+      <div class="avatar-wrap"><div class="avatar" id="avatar"></div></div>
       <div class="name" id="name"></div>
       <div class="sub"><span id="subtext"></span><span class="dots"></span></div>
     </div>
@@ -128,9 +224,9 @@
     <div class="answer" id="answerBtn">
       <div class="btn-wrap">
         <svg width="100%" height="100%">
-          <g fill="none" stroke="#E7CD9C" stroke-width="1">
+          <g fill="none" stroke="#E7CD9C" stroke-width="1.2">
             <circle cx="50%" cy="50%" r="30%">
-              <animate id="r1" attributeName="r" from="30%" to="49%" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="r" from="30%" to="49%" dur="1.2s" repeatCount="indefinite"/>
               <animate attributeName="opacity" from="1" to="0" dur="1.2s" repeatCount="indefinite"/>
             </circle>
             <circle cx="50%" cy="50%" r="30%">
@@ -150,37 +246,39 @@
       <div class="label" id="answerLabel"></div>
     </div>
 
+    <div id="burst"></div>
     <div id="call">
-      <video id="video" playsinline webkit-playsinline></video>
-      <div class="connected" id="connected">
-        <div class="avatar" id="avatar2"></div>
-        <div class="name" id="name2" style="font-size:24px"></div>
-      </div>
-      <div class="timer" id="timer">00:00</div>
-      <div class="hangup" onclick="endCall()">
-        <svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.25c1.1.37 2.3.57 3.6.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1.02l-2.2 2.2z"/></svg>
-      </div>
+      <div class="avatar" id="avatar2"></div>
+      <div class="who" id="name2"></div>
+      <div class="status" id="status">正在接通…</div>
     </div>
     <div id="ended">通话已结束</div>
+
+    <div id="gate">
+      <div class="dialog">
+        <div class="content" id="gateText"></div>
+        <div class="ok" id="gateOk">确定</div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
 /* ======================= 配置 =======================
- * 两种改法（URL 参数优先）：
- *  1) 直接改下面 CONFIG
- *  2) 链接后加参数：index.html?name=张三&avatar=me.jpg&video=clip.mp4
- *     avatar / video 可以是同目录文件名，也可以是完整 https 链接
+ * 改 CONFIG，或链接后加参数：?name=张三&avatar=xx.jpg
+ * （改了 name 记得同步改 <head> 里的 <title>/og:title，那是链接预览用的）
  */
 const CONFIG = {
-  name:     "张三",
-  title:    "{name}邀请你视频通话",   // 顶栏，{name} 会被替换
+  name:     "王泓森",
+  title:    "{name}邀请你视频通话",
   subtext:  "邀请你视频通话",
   answer:   "接听",
-  avatar:   "",          // 空 = 用名字首字做头像
-  video:    "",          // 接听后播放的视频；空 = 显示“已接通”+计时
-  pattern:  "福",        // 底纹用字
-  // 接听后跳转（优先于 video）。不开放成 URL 参数，免得链接里露馅
+  avatar:   "avatar.jpg",
+  pattern:  "福",
+  gate:     "{name} 邀请你视频通话<small>请关闭手机静音</small>",
+  // 铃声：放一个 ring.mp3 到同目录并填 "ring.mp3"；空 = 用内置合成铃声
+  ringtone: "",
+  // 接听后跳转。不开放成 URL 参数，免得链接里露馅
   redirect: "https://www.bilibili.com/video/BV1UT42167xb",
   // 国外朋友换成：https://www.youtube.com/watch?v=dQw4w9WgXcQ
 };
@@ -189,19 +287,21 @@ const q = new URLSearchParams(location.search);
 for (const k of Object.keys(CONFIG)) if (k !== "redirect" && q.has(k)) CONFIG[k] = q.get(k);
 
 const $ = id => document.getElementById(id);
-const title = CONFIG.title.replaceAll("{name}", CONFIG.name);
+const fill = s => s.replaceAll("{name}", CONFIG.name);
+const title = fill(CONFIG.title);
 document.title = title;
 $("title").textContent = title;
 $("name").textContent = $("name2").textContent = CONFIG.name;
 $("subtext").textContent = CONFIG.subtext;
 $("answerLabel").textContent = CONFIG.answer;
+$("gateText").innerHTML = fill(CONFIG.gate);
 
 for (const el of [$("avatar"), $("avatar2")]) {
   if (CONFIG.avatar) el.style.backgroundImage = `url("${CONFIG.avatar}")`;
   else { el.textContent = [...CONFIG.name][0] || "?"; el.style.background = "#c9a063"; }
 }
 
-/* 福字底纹：随机大小/角度/字体，画在 canvas 上 */
+/* ---------- 福字底纹 ---------- */
 function drawPattern() {
   const c = $("pattern"), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   c.width = r.width * dpr; c.height = r.height * dpr;
@@ -220,39 +320,124 @@ function drawPattern() {
     g.restore();
   }
 }
-drawPattern();
-addEventListener("resize", drawPattern);
 
-/* 接听 / 挂断 */
-let tick = null;
-$("answerBtn").onclick = () => {
-  navigator.vibrate?.(0);
-  $("call").style.display = "block";
-  if (CONFIG.redirect) {
-    // 先闪一下“已接通”画面再跳，像真的接通了
-    $("video").style.display = "none";
-    setTimeout(() => location.replace(CONFIG.redirect), 900);
-    return;
+/* ---------- 金色粒子 + 飘落的小福字 ---------- */
+const fx = $("fx"), fg = fx.getContext("2d");
+let W = 0, H = 0, parts = [];
+function sizeFx() {
+  const r = fx.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  W = r.width; H = r.height; fx.width = W * dpr; fx.height = H * dpr;
+  fg.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function spawn(init) {
+  const glyph = Math.random() < 0.12;
+  return {
+    x: Math.random() * W,
+    y: init ? Math.random() * H : H + 10,
+    vy: -(0.25 + Math.random() * 0.7),
+    vx: (Math.random() - 0.5) * 0.25,
+    r: glyph ? 11 + Math.random() * 8 : 0.8 + Math.random() * 2.2,
+    a: 0, amax: 0.35 + Math.random() * 0.6,
+    tw: Math.random() * 6.28, rot: (Math.random() - 0.5) * 0.6,
+    glyph,
+  };
+}
+let fxOn = true;
+function loop() {
+  if (!fxOn) return;
+  fg.clearRect(0, 0, W, H);
+  if (parts.length < 55) parts.push(spawn(false));
+  for (const p of parts) {
+    p.x += p.vx + Math.sin(p.tw) * 0.15; p.y += p.vy; p.tw += 0.05;
+    p.a = Math.min(p.amax, p.a + 0.01) * (p.y < H * 0.15 ? p.y / (H * 0.15) : 1);
+    const twinkle = 0.6 + 0.4 * Math.sin(p.tw * 2);
+    fg.globalAlpha = Math.max(0, p.a * twinkle);
+    if (p.glyph) {
+      fg.save(); fg.translate(p.x, p.y); fg.rotate(p.rot);
+      fg.fillStyle = "#ffd98a"; fg.font = `${p.r * 2}px "STKaiti","KaiTi",serif`;
+      fg.fillText(CONFIG.pattern, -p.r, p.r * 0.7); fg.restore();
+    } else {
+      const grd = fg.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3);
+      grd.addColorStop(0, "rgba(255,240,190,1)"); grd.addColorStop(1, "rgba(255,200,120,0)");
+      fg.fillStyle = grd; fg.beginPath(); fg.arc(p.x, p.y, p.r * 3, 0, 6.28); fg.fill();
+    }
   }
-  const v = $("video");
-  if (CONFIG.video) {
-    $("connected").style.display = "none";
-    v.src = CONFIG.video;
-    v.play().catch(() => {});
-    v.onended = endCall;
-  } else v.style.display = "none";
-  const t0 = Date.now();
-  tick = setInterval(() => {
-    const s = (Date.now() - t0) / 1000 | 0;
-    $("timer").textContent = `${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-  }, 500);
+  parts = parts.filter(p => p.y > -30);
+  fg.globalAlpha = 1;
+  requestAnimationFrame(loop);
+}
+
+function layout() { drawPattern(); sizeFx(); }
+layout();
+addEventListener("resize", layout);
+for (let i = 0; i < 35; i++) parts.push(spawn(true));
+loop();
+
+/* ---------- 铃声：内置合成（原创旋律），生成 WAV 用 <audio> 播放 ----------
+ * 用 <audio> 而不是直接 WebAudio：iPhone 静音键开着时 WebAudio 会被静音，<audio> 不会
+ */
+function synthRingtone() {
+  const sr = 22050;
+  // 一小节：上行琶音两遍 + 停顿，循环
+  const notes = [[0, 76], [.16, 79], [.32, 84], [.48, 88], [.8, 76], [.96, 79], [1.12, 84], [1.28, 88]];
+  const len = 2.6, buf = new Float32Array(Math.round(sr * len));
+  for (const [t0, m] of notes) {
+    const f = 440 * Math.pow(2, (m - 69) / 12), s0 = Math.round(t0 * sr), dur = 0.55 * sr;
+    for (let i = 0; i < dur && s0 + i < buf.length; i++) {
+      const t = i / sr;
+      const env = Math.min(1, t / 0.004) * Math.exp(-t * 7);
+      // 马林巴感：基频 + 4 倍泛音快速衰减
+      buf[s0 + i] += 0.32 * env * (Math.sin(6.2832 * f * t) + 0.35 * Math.exp(-t * 30) * Math.sin(6.2832 * f * 4 * t));
+    }
+  }
+  const dv = new DataView(new ArrayBuffer(44 + buf.length * 2));
+  const str = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); dv.setUint32(4, 36 + buf.length * 2, true); str(8, "WAVEfmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, "data"); dv.setUint32(40, buf.length * 2, true);
+  for (let i = 0; i < buf.length; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, buf[i])) * 32767, true);
+  return URL.createObjectURL(new Blob([dv], { type: "audio/wav" }));
+}
+const ring = new Audio(CONFIG.ringtone || synthRingtone());
+ring.loop = true;
+
+/* ---------- 流程 ---------- */
+$("gateOk").onclick = () => {
+  ring.play().catch(() => {});
+  navigator.vibrate?.([800, 600, 800, 600, 800, 600, 800]);
+  $("gate").style.opacity = 0;
+  setTimeout(() => $("gate").remove(), 350);
+  $("stage").classList.add("ringing");
 };
+
+let answered = false;
+$("answerBtn").onclick = () => {
+  if (answered || !$("stage").classList.contains("ringing")) return;
+  answered = true;
+  ring.pause();
+  navigator.vibrate?.(0);
+  // 从按钮位置炸开一个圆盖满屏
+  const b = $("answerBtn").querySelector(".btn").getBoundingClientRect();
+  const s = $("stage").getBoundingClientRect();
+  const burst = $("burst");
+  burst.style.left = (b.left + b.width / 2 - s.left) + "px";
+  burst.style.top  = (b.top + b.height / 2 - s.top) + "px";
+  requestAnimationFrame(() => burst.classList.add("go"));
+  setTimeout(() => {
+    fxOn = false;
+    $("call").style.display = "flex";
+    burst.style.opacity = 0; burst.style.transition = "opacity .3s";
+  }, 700);
+  setTimeout(() => { $("status").textContent = "已接通 00:01"; }, 1500);
+  setTimeout(() => location.href = CONFIG.redirect, 2200);
+};
+
 function endCall() {
-  clearInterval(tick);
-  $("video").pause();
+  ring.pause();
+  fxOn = false;
   $("ended").style.display = "flex";
 }
-navigator.vibrate?.([800, 600, 800, 600, 800]);
 </script>
 </body>
 </html>
