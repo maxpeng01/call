@@ -193,8 +193,37 @@
   #call .avatar { width: 96px; height: 96px; font-size: 40px; animation: pop .5s cubic-bezier(.2,1.5,.4,1); }
   #call .who { font-size: 22px; letter-spacing: 3px; }
   #call .status { font-size: 15px; opacity: .75; letter-spacing: 1px; }
+  /* 接通后的“对方画面” */
+  #remote {
+    position: absolute; inset: 0; z-index: 11; background: #000; display: none;
+    animation: fadein .5s ease-out;
+  }
+  #remote video { width: 100%; height: 100%; object-fit: cover; }
+  #remote iframe {
+    position: absolute; left: 0; top: 50%; width: 100%; aspect-ratio: 4 / 3;
+    transform: translateY(-50%); border: 0;
+  }
+  #remote .hud {
+    position: absolute; left: 0; right: 0; top: 12px; text-align: center;
+    font-size: 15px; text-shadow: 0 1px 4px rgba(0,0,0,.8); pointer-events: none;
+  }
+  #remote .tap {
+    position: absolute; left: 0; right: 0; bottom: 22%; text-align: center; font-size: 15px;
+    opacity: .8; pointer-events: none; animation: blink 1.6s ease-in-out infinite;
+  }
+  #remote .pip {
+    position: absolute; right: 12px; top: 44px; width: 92px; height: 130px; border-radius: 8px;
+    background: #2a2a2a; border: 1px solid rgba(255,255,255,.25);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; opacity: .9;
+  }
+  #remote .hangup {
+    position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+    width: 64px; height: 64px; border-radius: 50%; background: #e5463b;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  #remote .hangup svg { width: 30px; height: 30px; transform: rotate(135deg); }
   #ended {
-    position: absolute; inset: 0; display: none; z-index: 12;
+    position: absolute; inset: 0; display: none; z-index: 13;
     align-items: center; justify-content: center; background: rgba(0,0,0,.8);
     font-size: 18px; letter-spacing: 2px;
   }
@@ -252,6 +281,15 @@
       <div class="who" id="name2"></div>
       <div class="status" id="status">正在接通…</div>
     </div>
+    <div id="remote">
+      <video id="rv" playsinline webkit-playsinline preload="auto"></video>
+      <div class="pip">摄像头已关闭</div>
+      <div class="hud" id="hud">00:00</div>
+      <div class="tap" id="tapHint">轻触画面开启视频</div>
+      <div class="hangup" onclick="endCall()">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.25c1.1.37 2.3.57 3.6.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1.02l-2.2 2.2z"/></svg>
+      </div>
+    </div>
     <div id="ended">通话已结束</div>
 
     <div id="gate">
@@ -278,13 +316,17 @@ const CONFIG = {
   gate:     "{name} 邀请你视频通话<small>请关闭手机静音</small>",
   // 铃声：放一个 ring.mp3 到同目录并填 "ring.mp3"；空 = 用内置合成铃声
   ringtone: "",
-  // 接听后跳转。不开放成 URL 参数，免得链接里露馅
-  redirect: "https://www.bilibili.com/video/BV1UT42167xb",
-  // 国外朋友换成：https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  // 接听后的“对方画面”，按优先级：
+  //  video    同目录视频文件（如 "clip.mp4"）——点接听即全屏带声播放，效果最好
+  //  bvid     B 站嵌入播放器——在本页内全屏，但 iOS 不许跨域自动带声播放，要再点一下画面
+  //  redirect 直接跳走（会露出 B 站页面，剧透）
+  video:    "",
+  bvid:     "BV1UT42167xb",
+  redirect: "",
 };
 
 const q = new URLSearchParams(location.search);
-for (const k of Object.keys(CONFIG)) if (k !== "redirect" && q.has(k)) CONFIG[k] = q.get(k);
+for (const k of Object.keys(CONFIG)) if (!["redirect", "video", "bvid"].includes(k) && q.has(k)) CONFIG[k] = q.get(k);
 
 const $ = id => document.getElementById(id);
 const fill = s => s.replaceAll("{name}", CONFIG.name);
@@ -416,6 +458,12 @@ $("answerBtn").onclick = () => {
   if (answered || !$("stage").classList.contains("ringing")) return;
   answered = true;
   ring.pause();
+  // iOS 只在用户点击的同一时刻允许带声播放：这里先 play 再 pause 解锁，稍后再正式播放
+  const rv = $("rv");
+  if (CONFIG.video) {
+    rv.src = CONFIG.video;
+    rv.play().then(() => { rv.pause(); rv.currentTime = 0; }).catch(() => {});
+  }
   navigator.vibrate?.(0);
   // 从按钮位置炸开一个圆盖满屏
   const b = $("answerBtn").querySelector(".btn").getBoundingClientRect();
@@ -430,11 +478,38 @@ $("answerBtn").onclick = () => {
     burst.style.opacity = 0; burst.style.transition = "opacity .3s";
   }, 700);
   setTimeout(() => { $("status").textContent = "已接通 00:01"; }, 1500);
-  setTimeout(() => location.href = CONFIG.redirect, 2200);
+  setTimeout(showRemote, 2200);
 };
+
+function showRemote() {
+  if (!CONFIG.video && !CONFIG.bvid) { if (CONFIG.redirect) location.href = CONFIG.redirect; return; }
+  const r = $("remote"), rv = $("rv");
+  r.style.display = "block";
+  if (CONFIG.video) {
+    $("tapHint").remove();
+    rv.play().catch(() => { rv.muted = true; rv.play(); });
+    rv.onended = endCall;
+  } else {
+    rv.remove();
+    const f = document.createElement("iframe");
+    f.src = `https://player.bilibili.com/player.html?bvid=${CONFIG.bvid}&autoplay=1&danmaku=0&high_quality=1`;
+    f.allow = "autoplay; fullscreen";
+    f.setAttribute("allowfullscreen", "");
+    r.prepend(f);
+    // 用户点进 iframe 后 window 失焦，据此收起提示
+    addEventListener("blur", () => $("tapHint")?.remove(), { once: true });
+  }
+  const t0 = Date.now();
+  setInterval(() => {
+    const s = (Date.now() - t0) / 1000 + 1 | 0;
+    $("hud").textContent = `${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }, 500);
+}
 
 function endCall() {
   ring.pause();
+  $("rv")?.pause();
+  $("remote").querySelector("iframe")?.remove();
   fxOn = false;
   $("ended").style.display = "flex";
 }
