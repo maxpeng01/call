@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>视频通话</title>
+<style>
+  /* ============ 可改配置在最底部 <script> 的 CONFIG 里 ============ */
+  :root {
+    --red-top: #b3140f;
+    --red-bot: #6e0303;
+    --gold: #e7cd9c;
+    --green: #4fbf6a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--red-bot); overflow: hidden; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: #fff;
+  }
+  #app {
+    position: relative; height: 100%; max-width: 480px; margin: 0 auto;
+    display: flex; flex-direction: column;
+  }
+  .topbar {
+    height: 56px; flex: none; background: #fff; color: #222;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    font-size: 18px; font-weight: 500;
+  }
+  .topbar .close {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; cursor: pointer;
+  }
+  .stage {
+    flex: 1; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, var(--red-top) 0%, #9a0b08 45%, var(--red-bot) 100%);
+  }
+  /* 福字底纹：canvas 生成，只铺上半部分并渐隐 */
+  #pattern {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 40%, transparent 72%);
+            mask-image: linear-gradient(180deg, #000 0%, #000 40%, transparent 72%);
+    opacity: .9;
+  }
+  .caller {
+    position: absolute; left: 0; right: 0; top: 16%;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .avatar {
+    width: 132px; height: 132px; border-radius: 6px;
+    border: 2px solid var(--gold); background: #d9d9d9 center/cover no-repeat;
+    box-shadow: 0 4px 18px rgba(0,0,0,.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 56px; color: #fff; font-weight: 600;
+  }
+  .name { margin-top: 18px; font-size: 32px; font-weight: 700; letter-spacing: 4px; }
+  .sub  { margin-top: 12px; font-size: 19px; letter-spacing: 2px; opacity: .95; }
+  .sub .dots::after { content: ""; animation: dots 1.5s steps(4) infinite; }
+  @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
+
+  .answer {
+    position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; cursor: pointer;
+  }
+  .btn-wrap { position: relative; width: 120px; height: 120px; }
+  .btn-wrap svg { position: absolute; inset: 0; }
+  .btn {
+    position: absolute; inset: 22px; border-radius: 50%; background: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 3px rgba(231,205,156,.5);
+    animation: shake 1.2s ease-in-out infinite;
+  }
+  @keyframes shake {
+    0%,60%,100% { transform: rotate(0) }
+    65% { transform: rotate(-12deg) } 70% { transform: rotate(12deg) }
+    75% { transform: rotate(-10deg) } 80% { transform: rotate(10deg) }
+    85% { transform: rotate(0) }
+  }
+  .btn svg { position: static; width: 38px; height: 38px; }
+  .answer .label { margin-top: 10px; font-size: 16px; letter-spacing: 2px; }
+
+  /* 接通后 */
+  #call {
+    position: absolute; inset: 0; background: #000; display: none; z-index: 5;
+  }
+  #call video { width: 100%; height: 100%; object-fit: cover; }
+  #call .connected {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+  }
+  #call .connected .avatar { width: 96px; height: 96px; font-size: 40px; }
+  #call .timer {
+    position: absolute; top: 14px; left: 0; right: 0; text-align: center;
+    font-size: 15px; opacity: .85; text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  }
+  #call .hangup {
+    position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
+    width: 68px; height: 68px; border-radius: 50%; background: #e5463b;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  #call .hangup svg { width: 32px; height: 32px; transform: rotate(135deg); }
+  #ended {
+    position: absolute; inset: 0; display: none; z-index: 6;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.75);
+    font-size: 18px; letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <svg class="close" viewBox="0 0 24 24" fill="none" stroke="#222" stroke-width="2" stroke-linecap="round" onclick="endCall()">
+      <path d="M5 5l14 14M19 5L5 19"/>
+    </svg>
+    <span id="title"></span>
+  </div>
+
+  <div class="stage">
+    <canvas id="pattern"></canvas>
+
+    <div class="caller">
+      <div class="avatar" id="avatar"></div>
+      <div class="name" id="name"></div>
+      <div class="sub"><span id="subtext"></span><span class="dots"></span></div>
+    </div>
+
+    <div class="answer" id="answerBtn">
+      <div class="btn-wrap">
+        <svg width="100%" height="100%">
+          <g fill="none" stroke="#E7CD9C" stroke-width="1">
+            <circle cx="50%" cy="50%" r="30%">
+              <animate id="r1" attributeName="r" from="30%" to="49%" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" from="1" to="0" dur="1.2s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="50%" cy="50%" r="30%">
+              <animate attributeName="r" begin="0.4s" from="30%" to="49%" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" begin="0.4s" from="1" to="0" dur="1.2s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="50%" cy="50%" r="30%">
+              <animate attributeName="r" begin="0.8s" from="30%" to="49%" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" begin="0.8s" from="1" to="0" dur="1.2s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+        </svg>
+        <div class="btn">
+          <svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.25c1.1.37 2.3.57 3.6.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1.02l-2.2 2.2z"/></svg>
+        </div>
+      </div>
+      <div class="label" id="answerLabel"></div>
+    </div>
+
+    <div id="call">
+      <video id="video" playsinline webkit-playsinline></video>
+      <div class="connected" id="connected">
+        <div class="avatar" id="avatar2"></div>
+        <div class="name" id="name2" style="font-size:24px"></div>
+      </div>
+      <div class="timer" id="timer">00:00</div>
+      <div class="hangup" onclick="endCall()">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.25c1.1.37 2.3.57 3.6.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.45.57 3.57a1 1 0 01-.25 1.02l-2.2 2.2z"/></svg>
+      </div>
+    </div>
+    <div id="ended">通话已结束</div>
+  </div>
+</div>
+
+<script>
+/* ======================= 配置 =======================
+ * 两种改法（URL 参数优先）：
+ *  1) 直接改下面 CONFIG
+ *  2) 链接后加参数：index.html?name=张三&avatar=me.jpg&video=clip.mp4
+ *     avatar / video 可以是同目录文件名，也可以是完整 https 链接
+ */
+const CONFIG = {
+  name:     "张三",
+  title:    "{name}邀请你视频通话",   // 顶栏，{name} 会被替换
+  subtext:  "邀请你视频通话",
+  answer:   "接听",
+  avatar:   "",          // 空 = 用名字首字做头像
+  video:    "",          // 接听后播放的视频；空 = 显示“已接通”+计时
+  pattern:  "福",        // 底纹用字
+  // 接听后跳转（优先于 video）。不开放成 URL 参数，免得链接里露馅
+  redirect: "https://www.bilibili.com/video/BV1UT42167xb",
+  // 国外朋友换成：https://www.youtube.com/watch?v=dQw4w9WgXcQ
+};
+
+const q = new URLSearchParams(location.search);
+for (const k of Object.keys(CONFIG)) if (k !== "redirect" && q.has(k)) CONFIG[k] = q.get(k);
+
+const $ = id => document.getElementById(id);
+const title = CONFIG.title.replaceAll("{name}", CONFIG.name);
+document.title = title;
+$("title").textContent = title;
+$("name").textContent = $("name2").textContent = CONFIG.name;
+$("subtext").textContent = CONFIG.subtext;
+$("answerLabel").textContent = CONFIG.answer;
+
+for (const el of [$("avatar"), $("avatar2")]) {
+  if (CONFIG.avatar) el.style.backgroundImage = `url("${CONFIG.avatar}")`;
+  else { el.textContent = [...CONFIG.name][0] || "?"; el.style.background = "#c9a063"; }
+}
+
+/* 福字底纹：随机大小/角度/字体，画在 canvas 上 */
+function drawPattern() {
+  const c = $("pattern"), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  const fonts = ['"STKaiti","KaiTi",serif', '"STXingkai","STCaiyun",cursive', '"SimSun","Songti SC",serif', '"STLiti","LiSu",serif'];
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const n = Math.round(r.width * r.height / 1400);
+  for (let i = 0; i < n; i++) {
+    const size = 16 + Math.pow(rnd(), 2.2) * 110;
+    g.save();
+    g.translate(rnd() * r.width, rnd() * r.height * 0.75);
+    g.rotate((rnd() - 0.5) * 0.5);
+    g.font = `${size}px ${fonts[Math.floor(rnd() * fonts.length)]}`;
+    g.fillStyle = `rgba(255,${120 + rnd() * 60 | 0},${100 + rnd() * 40 | 0},${0.08 + rnd() * 0.14})`;
+    g.fillText(CONFIG.pattern, -size / 2, size / 2);
+    g.restore();
+  }
+}
+drawPattern();
+addEventListener("resize", drawPattern);
+
+/* 接听 / 挂断 */
+let tick = null;
+$("answerBtn").onclick = () => {
+  navigator.vibrate?.(0);
+  $("call").style.display = "block";
+  if (CONFIG.redirect) {
+    // 先闪一下“已接通”画面再跳，像真的接通了
+    $("video").style.display = "none";
+    setTimeout(() => location.replace(CONFIG.redirect), 900);
+    return;
+  }
+  const v = $("video");
+  if (CONFIG.video) {
+    $("connected").style.display = "none";
+    v.src = CONFIG.video;
+    v.play().catch(() => {});
+    v.onended = endCall;
+  } else v.style.display = "none";
+  const t0 = Date.now();
+  tick = setInterval(() => {
+    const s = (Date.now() - t0) / 1000 | 0;
+    $("timer").textContent = `${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }, 500);
+};
+function endCall() {
+  clearInterval(tick);
+  $("video").pause();
+  $("ended").style.display = "flex";
+}
+navigator.vibrate?.([800, 600, 800, 600, 800]);
+</script>
+</body>
+</html>
